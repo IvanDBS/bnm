@@ -2,6 +2,7 @@
 
 source 'https://rubygems.org'
 
-gem 'nokogiri', platforms: [:ruby, :x86_64_linux]
+gem 'nokogiri', platforms: [:ruby, :linux]
+
 
 gem 'telegram-bot-ruby'
