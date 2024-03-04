@@ -35,6 +35,8 @@ GEM
       uri
     nokogiri (1.16.2-x86_64-darwin)
       racc (~> 1.4)
+    nokogiri (1.16.2-x86_64-linux)
+      racc (~> 1.4)
     racc (1.7.3)
     telegram-bot-ruby (2.0.0)
       dry-struct (~> 1.6)
@@ -46,6 +48,7 @@ GEM
 
 PLATFORMS
   x86_64-darwin-21
+  x86_64-linux
 
 DEPENDENCIES
   nokogiri
