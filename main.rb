@@ -33,7 +33,7 @@ def extract_rate(doc, valute_id)
 end
 
 # Initializing the Telegram bot
-token = 'YOUR_TELEGRAM_BOT_TOKEN'
+token = '6716806477:AAEsJdC1I7wO1SRJm2AgHAeahlUqvR0nasg'
 Telegram::Bot::Client.run(token) do |bot|
   bot.listen do |message|
     case message.text
