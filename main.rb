@@ -176,15 +176,20 @@ module BNMBot
     def run
       Telegram::Bot::Client.run(@token) do |bot|
         bot.listen do |message|
-          handle_message(message, bot)
-        rescue StandardError => e
-          logger.error("Error processing message: #{e.message}")
-          user_id = message.from.id
-          lang = @user_languages[user_id] || 'ro'
-          bot.api.send_message(
-            chat_id: message.chat.id,
-            text: Configuration::TRANSLATIONS[lang]['error']
-          )
+          begin
+            next unless message.respond_to?(:text)  # Skip non-text updates
+            handle_message(message, bot)
+          rescue StandardError => e
+            logger.error("Error processing message: #{e.message}")
+            if message.respond_to?(:chat) && message.respond_to?(:from)
+              user_id = message.from.id
+              lang = @user_languages[user_id] || 'ro'
+              bot.api.send_message(
+                chat_id: message.chat.id,
+                text: Configuration::TRANSLATIONS[lang]['error']
+              )
+            end
+          end
         end
       end
     end
@@ -192,6 +197,8 @@ module BNMBot
     private
 
     def handle_message(message, bot)
+      return unless message.respond_to?(:text)
+      
       user_id = message.from.id
       @user_languages[user_id] ||= 'ro'  # Default language is Romanian
 
