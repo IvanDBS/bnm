@@ -3,5 +3,4 @@ builder = "nixpacks"
 buildCommand = "bundle install"
 
 [deploy]
-startCommand = "ruby main.rb"
-restartPolicyType = "on-failure" 
+startCommand = "ruby main.rb" 
