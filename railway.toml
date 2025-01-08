@@ -1,6 +1,0 @@
-[build]
-builder = "nixpacks"
-buildCommand = "bundle install"
-
-[deploy]
-startCommand = "ruby main.rb" 
