@@ -167,31 +167,124 @@ module BNMBot
     end
   end
 
+  module HealthMonitor
+    class << self
+      def initialize_monitoring
+        @start_time = Time.now
+        @last_message_time = Time.now
+        @message_count = 0
+        @errors_count = 0
+        @logger = Logger.new($stdout)
+        @logger.level = Logger::INFO
+      end
+
+      def record_message
+        @message_count += 1
+        @last_message_time = Time.now
+      end
+
+      def record_error
+        @errors_count += 1
+      end
+
+      def check_health
+        current_time = Time.now
+        uptime = (current_time - @start_time).to_i
+        time_since_last_message = (current_time - @last_message_time).to_i
+
+        health_status = {
+          uptime_seconds: uptime,
+          messages_processed: @message_count,
+          errors_count: @errors_count,
+          seconds_since_last_message: time_since_last_message,
+          memory_usage_mb: `ps -o rss= -p #{Process.pid}`.to_i / 1024
+        }
+
+        log_health_status(health_status)
+        
+        # Alert if no messages for too long
+        if time_since_last_message > 3600 # 1 hour
+          @logger.warn "⚠️ No messages received in #{time_since_last_message} seconds"
+        end
+
+        # Alert if error rate is high
+        if @errors_count > 50
+          @logger.warn "⚠️ High error count: #{@errors_count} errors"
+        end
+
+        # Perform GC if memory usage is high (> 500MB)
+        if health_status[:memory_usage_mb] > 500
+          @logger.info "Running GC due to high memory usage"
+          GC.start
+        end
+      end
+
+      private
+
+      def log_health_status(status)
+        @logger.info "Bot Health Status:"
+        @logger.info "├─ Uptime: #{status[:uptime_seconds]} seconds"
+        @logger.info "├─ Messages Processed: #{status[:messages_processed]}"
+        @logger.info "├─ Errors Count: #{status[:errors_count]}"
+        @logger.info "├─ Time Since Last Message: #{status[:seconds_since_last_message]} seconds"
+        @logger.info "└─ Memory Usage: #{status[:memory_usage_mb]} MB"
+      end
+    end
+  end
+
   class Bot
     def initialize(token)
       @token = token
       @user_languages = {}  # Хранение языка для каждого пользователя
+      @logger = Logger.new($stdout)
+      HealthMonitor.initialize_monitoring
     end
 
     def run
-      Telegram::Bot::Client.run(@token) do |bot|
-        bot.listen do |message|
-          begin
-            next unless message.respond_to?(:text)  # Skip non-text updates
-            handle_message(message, bot)
-          rescue StandardError => e
-            logger.error("Error processing message: #{e.message}")
-            if message.respond_to?(:chat) && message.respond_to?(:from)
-              user_id = message.from.id
-              lang = @user_languages[user_id] || 'ro'
-              bot.api.send_message(
-                chat_id: message.chat.id,
-                text: Configuration::TRANSLATIONS[lang]['error']
-              )
-            end
-          end
+      @logger.info('Bot started')
+      
+      # Start health check timer
+      health_check_thread = Thread.new do
+        loop do
+          sleep 300 # Check every 5 minutes
+          HealthMonitor.check_health
         end
       end
+
+      Telegram::Bot::Client.run(@token) do |bot|
+        begin
+          @logger.info('Bot connected to Telegram API')
+          bot.listen do |message|
+            begin
+              HealthMonitor.record_message
+              next unless message.respond_to?(:text)  # Skip non-text updates
+              handle_message(message, bot)
+            rescue StandardError => e
+              HealthMonitor.record_error
+              @logger.error("Error processing message: #{e.message}")
+              if message.respond_to?(:chat) && message.respond_to?(:from)
+                user_id = message.from.id
+                lang = @user_languages[user_id] || 'ro'
+                bot.api.send_message(
+                  chat_id: message.chat.id,
+                  text: Configuration::TRANSLATIONS[lang]['error']
+                )
+              end
+            end
+          end
+        rescue Telegram::Bot::Exceptions::ResponseError => e
+          HealthMonitor.record_error
+          @logger.error("Telegram API Error: #{e.message}")
+          retry
+        rescue StandardError => e
+          HealthMonitor.record_error
+          @logger.error("Unexpected error: #{e.message}")
+          @logger.error(e.backtrace.join("\n"))
+          retry
+        end
+      end
+    ensure
+      health_check_thread&.kill
     end
 
     private
@@ -326,10 +419,6 @@ module BNMBot
       return date - 2 if date.sunday?
       return date - 1 if date.saturday?
       date
-    end
-
-    def logger
-      @logger ||= Logger.new($stdout)
     end
   end
 end
